@@ -14,9 +14,8 @@ from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 SCOPES = ['https://www.googleapis.com/auth/drive']
 FOLDER_NAME = 'WorkPC_Transfer'
 
-@st.cache_resource
-def get_drive_service():
-    """Create and cache the Google Drive service using OAuth."""
+def get_credentials():
+    """Get Google credentials from secrets or local file."""
     creds = None
 
     # Try to load from Streamlit secrets (for cloud deployment)
@@ -53,13 +52,17 @@ def get_drive_service():
             st.error("Invalid credentials and cannot refresh!")
             st.stop()
 
-    return build('drive', 'v3', credentials=creds)
+    return creds
 
-@st.cache_data(ttl=60)
-def get_folder_id(_service):
+def get_drive_service():
+    """Create Google Drive service (fresh connection each time)."""
+    creds = get_credentials()
+    return build('drive', 'v3', credentials=creds, cache_discovery=False)
+
+def get_folder_id(service):
     """Get or create the WorkPC_Transfer folder."""
     query = f"name='{FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    results = _service.files().list(q=query, fields="files(id)").execute()
+    results = service.files().list(q=query, fields="files(id)").execute()
     files = results.get('files', [])
 
     if files:
@@ -69,7 +72,7 @@ def get_folder_id(_service):
         'name': FOLDER_NAME,
         'mimeType': 'application/vnd.google-apps.folder'
     }
-    folder = _service.files().create(body=folder_metadata, fields='id').execute()
+    folder = service.files().create(body=folder_metadata, fields='id').execute()
     return folder['id']
 
 def list_files(service, folder_id):
@@ -139,14 +142,6 @@ st.title("📁 File Transfer")
 st.markdown("*Transfer files between your devices via Google Drive*")
 st.divider()
 
-# Get Drive service
-try:
-    service = get_drive_service()
-    folder_id = get_folder_id(service)
-except Exception as e:
-    st.error(f"Failed to connect to Google Drive: {e}")
-    st.stop()
-
 # Create tabs
 tab1, tab2 = st.tabs(["📤 Upload", "📥 Download"])
 
@@ -165,23 +160,28 @@ with tab1:
             progress_bar = st.progress(0)
             status_text = st.empty()
 
-            success_count = 0
-            for i, uploaded_file in enumerate(uploaded_files):
-                status_text.text(f"Uploading: {uploaded_file.name}...")
-                try:
-                    file_content = uploaded_file.read()
-                    mime_type = uploaded_file.type or 'application/octet-stream'
-                    upload_file(service, folder_id, uploaded_file.name, file_content, mime_type)
-                    success_count += 1
-                except Exception as e:
-                    st.error(f"Failed to upload {uploaded_file.name}: {e}")
-                progress_bar.progress((i + 1) / len(uploaded_files))
+            try:
+                service = get_drive_service()
+                folder_id = get_folder_id(service)
 
-            status_text.text("Upload complete!")
-            if success_count > 0:
-                st.success(f"Successfully uploaded {success_count} file(s)!")
-                st.balloons()
-                st.cache_data.clear()
+                success_count = 0
+                for i, uploaded_file in enumerate(uploaded_files):
+                    status_text.text(f"Uploading: {uploaded_file.name}...")
+                    try:
+                        file_content = uploaded_file.read()
+                        mime_type = uploaded_file.type or 'application/octet-stream'
+                        upload_file(service, folder_id, uploaded_file.name, file_content, mime_type)
+                        success_count += 1
+                    except Exception as e:
+                        st.error(f"Failed to upload {uploaded_file.name}: {e}")
+                    progress_bar.progress((i + 1) / len(uploaded_files))
+
+                status_text.text("Upload complete!")
+                if success_count > 0:
+                    st.success(f"Successfully uploaded {success_count} file(s)!")
+                    st.balloons()
+            except Exception as e:
+                st.error(f"Connection error: {e}")
 
 # Download Tab
 with tab2:
@@ -189,14 +189,14 @@ with tab2:
 
     col1, col2 = st.columns([1, 5])
     with col1:
-        if st.button("🔄 Refresh"):
-            st.cache_data.clear()
-            st.rerun()
+        refresh = st.button("🔄 Refresh")
 
     try:
+        service = get_drive_service()
+        folder_id = get_folder_id(service)
         files = list_files(service, folder_id)
     except Exception as e:
-        st.error(f"Failed to list files: {e}")
+        st.error(f"Failed to connect to Google Drive: {e}")
         files = []
 
     if not files:
@@ -235,7 +235,9 @@ with tab2:
 
             with col3:
                 try:
-                    file_content = download_file(service, file['id'])
+                    # Create a new service for each download to avoid SSL issues
+                    dl_service = get_drive_service()
+                    file_content = download_file(dl_service, file['id'])
                     st.download_button(
                         label="⬇️",
                         data=file_content,
@@ -249,8 +251,8 @@ with tab2:
             with col4:
                 if st.button("🗑️", key=f"del_{file['id']}", help="Delete"):
                     try:
-                        delete_file(service, file['id'])
-                        st.cache_data.clear()
+                        del_service = get_drive_service()
+                        delete_file(del_service, file['id'])
                         st.rerun()
                     except Exception as e:
                         st.error(f"Delete failed: {e}")
@@ -259,5 +261,4 @@ with tab2:
 st.divider()
 with st.expander("ℹ️ Info"):
     st.write(f"**Folder:** {FOLDER_NAME}")
-    st.write(f"**Folder ID:** {folder_id}")
     st.caption("Files are stored in your personal Google Drive")
