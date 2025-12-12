@@ -1,0 +1,33 @@
+# Virtual environment
+venv/
+.venv/
+
+# Credentials (NEVER commit these!)
+token.json
+*.json
+!requirements.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Screenshots
+*.png
+*.jpg
+*.jpeg
+
+# Zone identifiers (Windows)
+*:Zone.Identifier
