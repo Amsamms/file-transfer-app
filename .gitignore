@@ -7,6 +7,10 @@ token.json
 *.json
 !requirements.txt
 
+# Test files
+test_drive.py
+test_oauth.py
+
 # Python
 __pycache__/
 *.py[cod]
