@@ -13,7 +13,7 @@ __pycache__/
 *.so
 .Python
 
-# Streamlit
+# Streamlit secrets only (keep config.toml)
 .streamlit/secrets.toml
 
 # IDE

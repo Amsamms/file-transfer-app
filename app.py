@@ -179,7 +179,6 @@ with tab1:
                 status_text.text("Upload complete!")
                 if success_count > 0:
                     st.success(f"Successfully uploaded {success_count} file(s)!")
-                    st.balloons()
             except Exception as e:
                 st.error(f"Connection error: {e}")
 
