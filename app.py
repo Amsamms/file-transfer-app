@@ -5,52 +5,39 @@ Works as a bridge between personal devices and work PC
 import streamlit as st
 import os
 import io
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/drive']
 FOLDER_NAME = 'WorkPC_Transfer'
+SERVICE_ACCOUNT_FILE = 'work-pc-storage-5e227b7e424e.json'
 
 def get_credentials():
-    """Get Google credentials from secrets or local file."""
+    """Get Google credentials from service account (secrets or local file)."""
     creds = None
 
     # Try to load from Streamlit secrets (for cloud deployment)
     try:
-        if 'google_token' in st.secrets:
-            token_info = {
-                'token': st.secrets['google_token']['token'],
-                'refresh_token': st.secrets['google_token']['refresh_token'],
-                'token_uri': st.secrets['google_token']['token_uri'],
-                'client_id': st.secrets['google_token']['client_id'],
-                'client_secret': st.secrets['google_token']['client_secret'],
-                'scopes': list(st.secrets['google_token']['scopes']),
-            }
-            creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+        if 'gcp_service_account' in st.secrets:
+            creds = service_account.Credentials.from_service_account_info(
+                st.secrets['gcp_service_account'],
+                scopes=SCOPES
+            )
     except Exception as e:
         st.warning(f"Could not load from secrets: {e}")
 
-    # Fall back to local token file (for local development)
-    if creds is None and os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    # Fall back to local service account file (for local development)
+    if creds is None and os.path.exists(SERVICE_ACCOUNT_FILE):
+        creds = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE,
+            scopes=SCOPES
+        )
 
     if not creds:
-        st.error("No credentials found! Please configure secrets or run locally with token.json")
+        st.error("No credentials found! Please configure secrets or add service account file locally.")
         st.stop()
-
-    if not creds.valid:
-        if creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except Exception as e:
-                st.error(f"Failed to refresh token: {e}")
-                st.stop()
-        else:
-            st.error("Invalid credentials and cannot refresh!")
-            st.stop()
 
     return creds
 
