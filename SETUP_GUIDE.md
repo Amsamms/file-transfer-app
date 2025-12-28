@@ -277,6 +277,92 @@ def save_excel_to_drive(service, folder_id, filename, df):
 
 ---
 
+## Token Expiration & Refresh
+
+### How OAuth Tokens Work
+
+- **Access Token**: Expires in ~1 hour. Used for API calls.
+- **Refresh Token**: Long-lived. Used to get new access tokens automatically.
+
+The app automatically refreshes the access token using the refresh token, so normally you don't need to do anything.
+
+### When Tokens Expire/Get Revoked
+
+Your refresh token can become invalid in these cases:
+
+1. **Password Change**: Changing your Google password revokes all tokens
+2. **Manual Revocation**: Removing app access in Google Account → Security → Third-party apps
+3. **6 Months Inactivity**: Google revokes refresh tokens for apps not used in 6 months
+4. **OAuth Consent Screen Changes**: Modifying scopes or app settings can invalidate tokens
+5. **App in "Testing" Mode**: Tokens expire after 7 days if app is not in "Production" mode
+
+### Error You'll See
+
+When the token expires, you'll get this error:
+```
+Failed to refresh token: ('invalid_grant: Token has been expired or revoked.')
+```
+
+### How to Regenerate Token
+
+1. Run the authentication script locally:
+```python
+# generate_token.py
+from google_auth_oauthlib.flow import InstalledAppFlow
+import json
+
+SCOPES = ['https://www.googleapis.com/auth/drive']
+CLIENT_SECRET_FILE = 'client_secret_xxxxx.json'  # Your OAuth client file
+
+def main():
+    flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+    creds = flow.run_local_server(port=8080)
+
+    with open('token.json', 'w') as token_file:
+        token_file.write(creds.to_json())
+
+    print("Token saved to token.json")
+
+    # Print values for Streamlit secrets
+    token_data = json.loads(creds.to_json())
+    print("\nFor secrets.toml:")
+    print("-" * 40)
+    print(f'token = "{token_data["token"]}"')
+    print(f'refresh_token = "{token_data["refresh_token"]}"')
+    print(f'token_uri = "{token_data["token_uri"]}"')
+    print(f'client_id = "{token_data["client_id"]}"')
+    print(f'client_secret = "{token_data["client_secret"]}"')
+
+if __name__ == '__main__':
+    main()
+```
+
+2. Run it: `python generate_token.py`
+3. Browser opens → Log in → Authorize
+4. Update `token.json` locally
+5. Update `.streamlit/secrets.toml` locally
+6. Update Streamlit Cloud secrets (Settings → Secrets)
+
+### Tips to Maximize Token Lifetime
+
+| Do This | Avoid This |
+|---------|------------|
+| ✅ Set app to **Production** mode in Google Cloud Console | ❌ Leave app in "Testing" mode (7-day expiry) |
+| ✅ Use the app at least once every few months | ❌ Let app sit unused for 6+ months |
+| ✅ Keep Google password unchanged | ❌ Changing Google password (revokes all tokens) |
+| ✅ Leave OAuth consent screen settings alone | ❌ Modifying scopes or app name |
+| ✅ Keep app access in Google Account security | ❌ Revoking access in "Third-party apps" |
+
+### Setting App to Production Mode
+
+1. Go to: https://console.cloud.google.com/apis/credentials/consent
+2. Click **"PUBLISH APP"**
+3. Confirm the warning (unverified apps still work for your own account)
+
+> **Note**: Production mode removes the 7-day token expiry. Your app stays "unverified" (shows warning screen) but that's fine for personal use.
+
+---
+
 ## Key Takeaways
 
 1. **Use OAuth, not Service Account** for personal apps that need to create files
@@ -284,6 +370,8 @@ def save_excel_to_drive(service, folder_id, filename, df):
 3. **Save the token.json** - it contains refresh_token for long-term access
 4. **Use Streamlit secrets** for cloud deployment (never commit tokens)
 5. **Google Drive = Free 15GB database** that you can manipulate programmatically
+6. **Set app to Production mode** to avoid 7-day token expiry
+7. **Use the app regularly** to prevent 6-month inactivity revocation
 
 ---
 
